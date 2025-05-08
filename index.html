@@ -1,0 +1,472 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Soil Yield Surface Visualizer</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script src="https://cdn.plot.ly/plotly-2.20.0.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <style>
+        body { font-family: 'Inter', sans-serif; }
+        .control-panel-bg { background-color: rgba(243, 244, 246, 0.9); }
+        #plot3DContainer {
+            min-height: 450px; 
+            width: 100%;
+            background-color: white; 
+        }
+        .chart-container { 
+            position: relative; 
+            height:300px; 
+            width:100%; 
+            max-width: 400px;
+            background-color: white; 
+        }
+        ::-webkit-scrollbar { width: 8px; }
+        ::-webkit-scrollbar-track { background: #f1f1f1; border-radius: 10px; }
+        ::-webkit-scrollbar-thumb { background: #888; border-radius: 10px; }
+        ::-webkit-scrollbar-thumb:hover { background: #555; }
+        canvas:focus { outline: none; } 
+    </style>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+</head>
+<body class="bg-gray-200 text-gray-800">
+
+    <div class="container mx-auto p-4">
+        <header class="text-center mb-8">
+            <h1 class="text-4xl font-bold text-blue-600">Soil Yield Surface Visualizer</h1>
+            <p class="text-lg text-gray-700 mt-2">Interactive 3D and 2D visualizations of soil material models.</p>
+        </header>
+
+        <div class="grid grid-cols-1 lg:grid-cols-3 gap-6">
+            <div class="lg:col-span-1 bg-white p-6 rounded-lg shadow-xl control-panel-bg backdrop-blur-md">
+                <h2 class="text-2xl font-semibold mb-4 text-blue-700 border-b pb-2">Mohr-Coulomb Model</h2>
+                <div class="mb-4">
+                    <label for="cohesion" class="block text-sm font-medium text-gray-700">Cohesion (c, kPa): <span id="cohesionValue" class="font-bold">10</span></label>
+                    <input type="range" id="cohesion" min="0" max="100" value="10" step="1" class="w-full h-2 bg-gray-300 rounded-lg appearance-none cursor-pointer accent-blue-500">
+                </div>
+                <div class="mb-6">
+                    <label for="frictionAngle" class="block text-sm font-medium text-gray-700">Friction Angle ($\phi$, degrees): <span id="frictionAngleValue" class="font-bold">30</span></label>
+                    <input type="range" id="frictionAngle" min="0" max="45" value="30" step="1" class="w-full h-2 bg-gray-300 rounded-lg appearance-none cursor-pointer accent-blue-500">
+                </div>
+                <div id="mathEquations" class="text-sm text-gray-600 space-y-2">
+                    <p><strong class="text-gray-700">Yield Function:</strong> $\sigma_1(1-\sin\phi) - \sigma_3(1+\sin\phi) - 2c\cos\phi = 0$ (for $\sigma_1 \ge \sigma_2 \ge \sigma_3$, compression positive).</p>
+                    <p><strong class="text-gray-700">Description:</strong> The Mohr-Coulomb criterion is a widely used model in soil mechanics. It defines a linear failure envelope in terms of shear stress and normal stress, or an irregular hexagonal pyramid/prism in principal stress space.</p>
+                    <p><strong class="text-gray-700">Apex (if $\phi > 0$):</strong> Lies on the hydrostatic axis at $p = c \cot\phi$.</p>
+                    <p><strong class="text-gray-700">$\pi$-Plane Shape:</strong> Irregular hexagon (becomes regular for $\phi=0$, i.e., Tresca).</p>
+                </div>
+            </div>
+
+            <div class="lg:col-span-2 bg-white p-2 rounded-lg shadow-xl min-h-[450px] lg:min-h-[550px] flex flex-col">
+                <h3 class="text-xl font-semibold mb-2 text-center text-blue-700">3D Principal Stress Space ($\sigma_1, \sigma_2, \sigma_3$)</h3>
+                <div id="plot3DContainer" class="flex-grow w-full rounded-md overflow-hidden">
+                    </div>
+            </div>
+        </div>
+
+        <div class="mt-8 grid grid-cols-1 md:grid-cols-2 gap-6">
+            <div class="bg-white p-6 rounded-lg shadow-xl">
+                <h3 class="text-xl font-semibold mb-3 text-center text-blue-700">$\pi$-Plane Projection</h3>
+                <div id="piPlaneContainer" class="chart-container mx-auto">
+                    <canvas id="piPlaneChart"></canvas>
+                </div>
+                <p class="text-xs text-gray-500 mt-2 text-center">View looking down the hydrostatic axis ($\sigma_1=\sigma_2=\sigma_3$).</p>
+            </div>
+            <div class="bg-white p-6 rounded-lg shadow-xl">
+                <h3 class="text-xl font-semibold mb-3 text-center text-blue-700">Meridian Plane ($p-q$) Projection</h3>
+                 <div id="meridianPlaneContainer" class="chart-container mx-auto">
+                    <canvas id="meridianPlaneChart"></canvas>
+                </div>
+                <p class="text-xs text-gray-500 mt-2 text-center">$p = (\sigma_1+\sigma_2+\sigma_3)/3$, $q = \sqrt{J_2'}$.</p>
+            </div>
+        </div>
+        
+        <footer class="text-center mt-12 py-4 border-t border-gray-300">
+            <p class="text-sm text-gray-600">&copy; 2025 Geotechnical Visualizations. For educational purposes.</p>
+        </footer>
+    </div>
+
+    <script>
+        // --- Global Variables ---
+        let piPlaneChartInstance, meridianPlaneChartInstance;
+        let cohesionSlider, frictionAngleSlider, cohesionValueSpan, frictionAngleValueSpan;
+        let plot3DDivElement; 
+
+        // --- MathJax Configuration ---
+        function loadMathJax() {
+            console.log("Attempting to load MathJax...");
+            if (typeof MathJax !== 'undefined' && MathJax.typesetPromise) {
+                console.log("MathJax already loaded. Attempting to typeset.");
+                MathJax.typesetPromise([document.getElementById('mathEquations')]).catch(err => console.error("MathJax typesetting error (already loaded):", err));
+                return;
+            }
+            if (document.getElementById('MathJax-script')) {
+                console.log("MathJax script tag already exists but MathJax object not ready. Will wait for onload.");
+                return; 
+            }
+            const script = document.createElement('script');
+            script.id = 'MathJax-script';
+            script.src = 'https://cdn.jsdelivr.net/npm/mathjax@3/es5/tex-mml-chtml.js';
+            script.async = true;
+            document.head.appendChild(script);
+            console.log("MathJax script appended to head.");
+
+            script.onload = () => {
+                console.log("MathJax script loaded successfully via CDN.");
+                if (typeof MathJax !== 'undefined' && MathJax.startup && MathJax.startup.promise) {
+                    MathJax.startup.promise.then(() => {
+                        console.log("MathJax startup promise resolved. Typesetting mathEquations div.");
+                        MathJax.typesetPromise([document.getElementById('mathEquations')]).catch(err => console.error("MathJax typesetting error on load:", err));
+                    }).catch(err => console.error("MathJax startup promise error:", err));
+                } else { 
+                    console.error("MathJax object or startup.promise not available after script.onload.");
+                }
+            };
+            script.onerror = () => {
+                console.error("MathJax script FAILED to load. Check network or CDN issues.");
+                const mathContainer = document.getElementById('mathEquations');
+                if (mathContainer) mathContainer.innerHTML += "<p class='text-red-500 font-semibold'>Math equations could not be rendered (MathJax failed to load).</p>";
+            };
+        }
+        
+        function degToRad(degrees) { return degrees * (Math.PI / 180); }
+
+        function initPlotly3DPlot() {
+            console.log("Initializing Plotly 3D plot...");
+            if (typeof Plotly === 'undefined') {
+                console.error("FATAL: Plotly is undefined.");
+                if (plot3DDivElement) plot3DDivElement.innerHTML = "<p class='text-red-500 p-4'>Error: Plotly.js library not loaded.</p>";
+                return false;
+            }
+            try {
+                const layout = {
+                    paper_bgcolor: 'rgba(255,255,255,1)', 
+                    plot_bgcolor: 'rgba(255,255,255,1)',  
+                    scene: {
+                        xaxis: { 
+                            title: 'σ₁', showgrid: false, zeroline: true, zerolinewidth: 1.5, zerolinecolor: '#333',
+                            showticklabels: false, ticks: '', showbackground: false,
+                            linecolor: 'black', linewidth: 1.5, range: [-50, 200], 
+                            titlefont: {size: 16, color: 'black'}
+                        },
+                        yaxis: { 
+                            title: 'σ₂', showgrid: false, zeroline: true, zerolinewidth: 1.5, zerolinecolor: '#333',
+                            showticklabels: false, ticks: '', showbackground: false,
+                            linecolor: 'black', linewidth: 1.5, range: [-50, 200],
+                            titlefont: {size: 16, color: 'black'}
+                        },
+                        zaxis: { 
+                            title: 'σ₃', showgrid: false, zeroline: true, zerolinewidth: 1.5, zerolinecolor: '#333',
+                            showticklabels: false, ticks: '', showbackground: false,
+                            linecolor: 'black', linewidth: 1.5, range: [-50, 200],
+                            titlefont: {size: 16, color: 'black'}
+                        },
+                        aspectmode: 'cube', // Ensures axes are scaled correctly for a cubic appearance
+                        camera: { eye: { x: 1.25, y: 1.25, z: 1.25 } } // Adjusted camera
+                    },
+                    margin: { l: 5, r: 5, b: 5, t: 5 }, // Minimal margins
+                    showlegend: false
+                };
+                Plotly.newPlot(plot3DDivElement, [], layout, {responsive: true, displayModeBar: false}); // Hide modebar for cleaner look
+                console.log("Plotly 3D plot initialized.");
+                return true;
+            } catch (e) {
+                console.error("Error in initPlotly3DPlot:", e);
+                if (plot3DDivElement) plot3DDivElement.innerHTML = `<p class='text-red-500 p-4'>Error initializing 3D plot: ${e.message || 'Unknown error'}.</p>`;
+                return false;
+            }
+        }
+        
+        // Mohr-Coulomb helper functions
+        function get_q_TC(p, c_val, phi_r) {
+            if (Math.abs(3 - Math.sin(phi_r)) < 1e-6) return Infinity;
+            return (6 * p * Math.sin(phi_r) + 6 * c_val * Math.cos(phi_r)) / (3 - Math.sin(phi_r));
+        }
+        function get_q_TE(p, c_val, phi_r) {
+            if (Math.abs(3 + Math.sin(phi_r)) < 1e-6) return Infinity;
+            return (6 * p * Math.sin(phi_r) + 6 * c_val * Math.cos(phi_r)) / (3 + Math.sin(phi_r));
+        }
+        function getHexagonVerticesPlotly(p_val, c_val, phi_r) { 
+            const q_tc_val = get_q_TC(p_val, c_val, phi_r);
+            const q_te_val = get_q_TE(p_val, c_val, phi_r);
+            if (!isFinite(q_tc_val) || !isFinite(q_te_val) || q_tc_val < 0 || q_te_val < 0) return [];
+            const sL1 = p_val + (2/3) * q_tc_val; const sS1 = p_val - (1/3) * q_tc_val;
+            const sL2 = p_val + (1/3) * q_te_val; const sS2 = p_val - (2/3) * q_te_val;
+            // Order for Plotly mesh3d (ensure consistent winding for normals if not using flatshading)
+            return [ 
+                { x: sL1, y: sS1, z: sS1 }, { x: sL2, y: sL2, z: sS2 },
+                { x: sS1, y: sL1, z: sS1 }, { x: sS2, y: sL2, z: sL2 },
+                { x: sS1, y: sS1, z: sL1 }, { x: sL2, y: sS2, z: sL2 }
+            ];
+        }
+
+        function updateMohrCoulombSurface() {
+            console.log("Updating Mohr-Coulomb surface...");
+            let currentCohesion = 10, currentFrictionAngle = 30;
+            if (cohesionSlider) currentCohesion = parseFloat(cohesionSlider.value);
+            if (frictionAngleSlider) currentFrictionAngle = parseFloat(frictionAngleSlider.value);
+            
+            const c = currentCohesion;
+            const phiRad = degToRad(currentFrictionAngle);
+            const p_max_visualization = 150; // Controls how far the surface extends
+
+            const vertices = []; // Array of {x,y,z} objects for Plotly
+            const faces_i = [], faces_j = [], faces_k = []; // For Plotly mesh3d faces
+
+            if (phiRad > 1e-3) { // Pyramidal surface
+                let p_apex = (c > 1e-3) ? c / Math.tan(phiRad) : 0;
+                if (p_apex < 0) p_apex = 0; // Apex should not be in tension for typical visualization
+                
+                vertices.push({ x: p_apex, y: p_apex, z: p_apex }); // Apex: vertex 0
+                const apexIndex = 0;
+
+                // Define a hexagonal base far from the apex for visualization
+                // Ensure p_base is significantly larger than p_apex for a good shape
+                let p_base = Math.max(p_apex + 20, p_max_visualization * 0.6); 
+                if (c === 0 && phiRad > 0) p_base = p_max_visualization * 0.6; // Cone from origin
+                if (p_base <= p_apex && c > 0) p_base = p_apex + Math.max(20, Math.abs(p_apex * 0.5) + 10) ;
+                if (p_base > p_max_visualization) p_base = p_max_visualization;
+
+
+                const baseHexVertices = getHexagonVerticesPlotly(p_base, c, phiRad);
+
+                if (baseHexVertices.length === 6) {
+                    const baseStartIndex = vertices.length; // Current length is 1 (only apex)
+                    baseHexVertices.forEach(v => vertices.push(v)); // Add base vertices (indices 1 to 6)
+
+                    // Create 6 triangular faces for the pyramid sides
+                    for (let i = 0; i < 6; i++) {
+                        faces_i.push(apexIndex);                     // Apex
+                        faces_j.push(baseStartIndex + i);           // Current base vertex
+                        faces_k.push(baseStartIndex + (i + 1) % 6); // Next base vertex (loops around)
+                    }
+                }
+            } else { // Prismatic surface (phi approx 0)
+                const p_low = Math.max(0.1, p_max_visualization * 0.05); // Start slightly away from origin if c > 0
+                const p_high = p_max_visualization;
+
+                const hexLowVertices = getHexagonVerticesPlotly(p_low, c, phiRad);
+                const hexHighVertices = getHexagonVerticesPlotly(p_high, c, phiRad);
+
+                if (hexLowVertices.length === 6 && hexHighVertices.length === 6) {
+                    const lowStartIndex = vertices.length;
+                    hexLowVertices.forEach(v => vertices.push(v));    // Vertices for low hexagon (e.g., 0-5)
+                    const highStartIndex = vertices.length;
+                    hexHighVertices.forEach(v => vertices.push(v)); // Vertices for high hexagon (e.g., 6-11)
+
+                    // Create 6 side faces (each a quad made of two triangles)
+                    for (let i = 0; i < 6; i++) {
+                        const currentLowIdx = lowStartIndex + i;
+                        const nextLowIdx    = lowStartIndex + (i + 1) % 6;
+                        const currentHighIdx= highStartIndex + i;
+                        const nextHighIdx   = highStartIndex + (i + 1) % 6;
+
+                        // Triangle 1 of the quad
+                        faces_i.push(currentLowIdx); faces_j.push(nextLowIdx); faces_k.push(currentHighIdx);
+                        // Triangle 2 of the quad
+                        faces_i.push(nextLowIdx); faces_j.push(nextHighIdx); faces_k.push(currentHighIdx);
+                    }
+                }
+            }
+            
+            if (plot3DDivElement && typeof Plotly !== 'undefined' && vertices.length > 0) {
+                const trace = {
+                    type: 'mesh3d',
+                    x: vertices.map(v => v.x), y: vertices.map(v => v.y), z: vertices.map(v => v.z),
+                    i: faces_i, j: faces_j, k: faces_k,
+                    color: '#0033cc', // Darker blue
+                    opacity: 0.50,
+                    flatshading: true,
+                    line: { show: true, color: 'black', width: 2 }, // Add edge lines to mesh3d
+                    lighting: { ambient: 0.7, diffuse: 1.0, specular: 0.2, fresnel: 0.1, roughness: 0.5 },
+                    lightposition: {x:1000, y:1000, z:1000}
+                };
+                const hydrostatic_axis = {
+                    type: 'scatter3d', mode: 'lines',
+                    x: [-150, 150], y: [-150, 150], z: [-150, 150],
+                    line: { color: 'rgb(80,80,80)', width: 2, dash: 'solid' },
+                    name: 'Hydrostatic Axis'
+                };
+                
+                const currentLayout = plot3DDivElement.layout || {};
+                const sceneLayout = currentLayout.scene || {};
+                const newLayout = {
+                    ...currentLayout,
+                    paper_bgcolor: 'rgba(255,255,255,1)', 
+                    plot_bgcolor: 'rgba(255,255,255,1)',  
+                    scene: {
+                        ...sceneLayout, // Preserve camera, aspectmode if already set
+                        xaxis: { ...sceneLayout.xaxis, title: 'σ₁', showgrid: false, zeroline: true, zerolinewidth: 1, zerolinecolor: '#505050', showticklabels: false, ticks:'', showbackground: false, linecolor: 'black', linewidth: 1},
+                        yaxis: { ...sceneLayout.yaxis, title: 'σ₂', showgrid: false, zeroline: true, zerolinewidth: 1, zerolinecolor: '#505050', showticklabels: false, ticks:'', showbackground: false, linecolor: 'black', linewidth: 1},
+                        zaxis: { ...sceneLayout.zaxis, title: 'σ₃', showgrid: false, zeroline: true, zerolinewidth: 1, zerolinecolor: '#505050', showticklabels: false, ticks:'', showbackground: false, linecolor: 'black', linewidth: 1},
+                        aspectmode: 'cube', // Re-apply for safety
+                    }
+                };
+                Plotly.react(plot3DDivElement, [trace, hydrostatic_axis], newLayout); 
+                console.log("Plotly 3D plot updated with corrected geometry.");
+            } else {
+                console.warn("Could not update Plotly 3D plot. Vertices:", vertices.length);
+            }
+            update2DPlots(c, phiRad);
+        }
+
+        function update2DPlots(c, phiRad) {
+            console.log("Updating 2D plots with c:", c, "phiRad:", phiRad);
+            const piCanvasEl = document.getElementById('piPlaneChart');
+            const meridianCanvasEl = document.getElementById('meridianPlaneChart');
+            // ... (rest of the 2D plot logic, with Chart.js styling changes)
+
+            if (typeof Chart === 'undefined') { console.error("Chart.js not loaded."); return; }
+
+            // Pi Plane Chart
+            const piContainer = document.getElementById('piPlaneContainer');
+            if (!piCanvasEl || !piContainer) { console.error("Pi-plane canvas/container not found."); } else {
+                try {
+                    const piCtx = piCanvasEl.getContext('2d');
+                    if (!piCtx) { console.error("Failed to get 2D context for pi-plane."); } else {
+                        const p_for_pi_plane = 50; let rawPiVertices = [];
+                        const hex3DVertices = getHexagonVerticesPlotly(p_for_pi_plane, c, phiRad); 
+                        if (hex3DVertices.length === 6) {
+                            hex3DVertices.forEach(v3d => { 
+                                const s1=v3d.x, s2=v3d.y, s3=v3d.z;
+                                const proj_x = (2*s1-s2-s3)/Math.sqrt(6); const proj_y = (s2-s3)/Math.sqrt(2);
+                                rawPiVertices.push({x: proj_x, y: proj_y});
+                            });
+                        }
+                        const piVertices = rawPiVertices.filter(pt => isFinite(pt.x) && isFinite(pt.y));
+                        if (piPlaneChartInstance) piPlaneChartInstance.destroy();
+                        piPlaneChartInstance = new Chart(piCtx, {
+                            type: 'scatter', 
+                            data: { datasets: [{ 
+                                data: piVertices.length > 0 ? [...piVertices, piVertices[0]] : [], 
+                                borderColor: 'black', borderWidth: 1.5,
+                                backgroundColor: 'rgba(0,0,0,0)', 
+                                showLine: true, pointRadius: 0, tension: 0 
+                            }] },
+                            options: { 
+                                responsive: true, maintainAspectRatio: false, 
+                                scales: { 
+                                    x: { title:{display:false}, grid:{display:false}, ticks:{display:false} }, 
+                                    y: { title:{display:false}, grid:{display:false}, ticks:{display:false}, afterDataLimits:(axis)=>{const maxAbs = Math.max(Math.abs(axis.min || 0), Math.abs(axis.max || 0)); axis.min = -maxAbs; axis.max = maxAbs;}}
+                                }, 
+                                aspectRatio:1, plugins:{legend:{display:false}, title: {display:false}}
+                            }
+                        });
+                    }
+                } catch (e) { console.error("Error Pi Plane:", e); if(piContainer) piContainer.innerHTML = `<p class='text-red-500'>Error: ${e.message}</p>`; }
+            }
+
+            // Meridian Plane Chart
+            const meridianContainer = document.getElementById('meridianPlaneContainer');
+            if (!meridianCanvasEl || !meridianContainer) { console.error("Meridian plane canvas/container not found."); } else {
+                try {
+                    const meridianCtx = meridianCanvasEl.getContext('2d');
+                     if (!meridianCtx) { console.error("Failed to get 2D context for meridian-plane."); } else {
+                        const p_values = []; const q_tc_values = []; const q_te_values = [];
+                        let p_start = (phiRad > 1e-3 && c > 1e-3) ? Math.min(100, c/Math.tan(phiRad)) : 0;
+                        if (p_start < 0) p_start = 0;
+                        for (let p_iter=p_start; p_iter<=150; p_iter+=1) { // Increased points for smoother line
+                            p_values.push(p_iter);
+                            const q_tc = get_q_TC(p_iter, c, phiRad); 
+                            const q_te = get_q_TE(p_iter, c, phiRad); 
+                            q_tc_values.push(q_tc!==null&&q_tc>=0?q_tc:NaN); q_te_values.push(q_te!==null&&q_te>=0?q_te:NaN);
+                        }
+                        if (meridianPlaneChartInstance) meridianPlaneChartInstance.destroy();
+                        meridianPlaneChartInstance = new Chart(meridianCtx, {
+                            type: 'line', 
+                            data: { labels: p_values.map(p => Math.round(p)), datasets: [ 
+                                {label:'TC',data:q_tc_values.filter(v=>!isNaN(v)),borderColor:'black',borderWidth:1.5,fill:false, tension:0.1, pointRadius:0}, 
+                                {label:'TE',data:q_te_values.filter(v=>!isNaN(v)),borderColor:'#555555',borderDash:[3,3],borderWidth:1.5,fill:false, tension:0.1, pointRadius:0} 
+                            ]},
+                            options: { 
+                                responsive: true, maintainAspectRatio: false, 
+                                scales: {
+                                    x:{title:{display:true,text:'p'},grid:{display:false}, ticks:{maxTicksLimit: 6, callback: function(value){return Math.round(value);}}}, 
+                                    y:{title:{display:true,text:'q'},grid:{display:false}, ticks:{maxTicksLimit: 6, callback: function(value){return Math.round(value);}}}
+                                }, 
+                                plugins:{legend:{display:true, position: 'top', labels: {boxWidth:10, font: {size: 10}} }, title: {display:false}} 
+                            }
+                        });
+                    }
+                } catch (e) { console.error("Error Meridian Plane:", e); if(meridianContainer) meridianContainer.innerHTML = `<p class='text-red-500'>Error: ${e.message}</p>`;}
+            }
+            // Attempt to re-typeset MathJax if it's loaded, specifically targeting the mathEquations div
+            if (typeof MathJax !== 'undefined' && MathJax.typesetPromise) {
+                console.log("Attempting MathJax re-typeset after plot updates.");
+                MathJax.typesetPromise([document.getElementById('mathEquations')]).catch(err => console.warn("MathJax re-typesetting failed:", err));
+            }
+        }
+        
+        function setupEventListeners() { 
+            cohesionSlider = document.getElementById('cohesion');
+            frictionAngleSlider = document.getElementById('frictionAngle');
+            cohesionValueSpan = document.getElementById('cohesionValue');
+            frictionAngleValueSpan = document.getElementById('frictionAngleValue');
+
+            if(cohesionSlider && frictionAngleSlider && cohesionValueSpan && frictionAngleValueSpan) {
+                cohesionSlider.addEventListener('input', (event) => {
+                    cohesionValueSpan.textContent = event.target.value;
+                    updateMohrCoulombSurface();
+                });
+                frictionAngleSlider.addEventListener('input', (event) => {
+                    frictionAngleValueSpan.textContent = event.target.value;
+                    updateMohrCoulombSurface();
+                });
+                console.log("Input event listeners set up.");
+            } else {
+                console.error("Could not find all slider/span elements to set up event listeners.");
+            }
+        }
+
+        document.addEventListener('DOMContentLoaded', () => { 
+            console.log("DOMContentLoaded event fired.");
+            plot3DDivElement = document.getElementById('plot3DContainer'); 
+            loadMathJax(); 
+            setupEventListeners(); 
+        });
+
+        window.onload = () => { 
+            console.log("window.onload event fired.");
+            if (!plot3DDivElement) { 
+                console.error("CRITICAL: plot3DContainer HTML element NOT FOUND by window.onload.");
+                return; 
+            }
+            
+            setTimeout(() => {
+                if (plot3DDivElement) { void plot3DDivElement.offsetHeight; } 
+                console.log(`plot3DContainer dimensions on timeout: ${plot3DDivElement.clientWidth}x${plot3DDivElement.clientHeight}`);
+                let canInitialize3D = plot3DDivElement.clientWidth > 0 && plot3DDivElement.clientHeight > 0;
+
+                if (canInitialize3D) {
+                    if (initPlotly3DPlot()) { 
+                        updateMohrCoulombSurface(); 
+                    } else {
+                        console.warn("Plotly 3D plot initialization failed.");
+                        let c_val = 10, phi_val = 30; // Fallback values
+                        if (cohesionSlider) c_val = parseFloat(cohesionSlider.value);
+                        if (frictionAngleSlider) phi_val = parseFloat(frictionAngleSlider.value);
+                        update2DPlots(c_val, degToRad(phi_val));
+                    }
+                } else {
+                    console.error("plot3DContainer still has zero dimensions. 3D plot cannot be initialized.");
+                    if(plot3DDivElement) plot3DDivElement.innerHTML = "<p class='text-red-500 p-4'>Error: 3D plot container has zero dimensions.</p>";
+                    let c_val = 10, phi_val = 30; // Fallback values
+                    if (cohesionSlider) c_val = parseFloat(cohesionSlider.value);
+                    if (frictionAngleSlider) phi_val = parseFloat(frictionAngleSlider.value);
+                    update2DPlots(c_val, degToRad(phi_val));
+                }
+                
+                // Final MathJax typesetting attempt after everything else
+                if (typeof MathJax !== 'undefined' && MathJax.typesetPromise && MathJax.startup && MathJax.startup.promise) {
+                    MathJax.startup.promise.then(() => { 
+                        console.log("Final MathJax typesetting call after all initializations.");
+                        MathJax.typesetPromise([document.getElementById('mathEquations')]).catch(err => console.warn("Final MathJax typesetting failed:", err));
+                    });
+                } else {
+                    console.warn("MathJax not ready for final typeset call or mathEquations div not found.");
+                }
+            }, 300); // Increased delay slightly for all resources to settle
+        };
+    </script>
+</body>
+</html>
