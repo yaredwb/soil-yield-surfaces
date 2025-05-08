@@ -161,13 +161,13 @@
                             linecolor: 'black', linewidth: 1.5, range: [-50, 200],
                             titlefont: {size: 16, color: 'black'}
                         },
-                        aspectmode: 'cube', // Ensures axes are scaled correctly for a cubic appearance
-                        camera: { eye: { x: 1.25, y: 1.25, z: 1.25 } } // Adjusted camera
+                        aspectmode: 'cube', 
+                        camera: { eye: { x: 1.25, y: 1.25, z: 1.25 } } 
                     },
-                    margin: { l: 5, r: 5, b: 5, t: 5 }, // Minimal margins
+                    margin: { l: 5, r: 5, b: 5, t: 5 }, 
                     showlegend: false
                 };
-                Plotly.newPlot(plot3DDivElement, [], layout, {responsive: true, displayModeBar: false}); // Hide modebar for cleaner look
+                Plotly.newPlot(plot3DDivElement, [], layout, {responsive: true, displayModeBar: false}); 
                 console.log("Plotly 3D plot initialized.");
                 return true;
             } catch (e) {
@@ -192,7 +192,6 @@
             if (!isFinite(q_tc_val) || !isFinite(q_te_val) || q_tc_val < 0 || q_te_val < 0) return [];
             const sL1 = p_val + (2/3) * q_tc_val; const sS1 = p_val - (1/3) * q_tc_val;
             const sL2 = p_val + (1/3) * q_te_val; const sS2 = p_val - (2/3) * q_te_val;
-            // Order for Plotly mesh3d (ensure consistent winding for normals if not using flatshading)
             return [ 
                 { x: sL1, y: sS1, z: sS1 }, { x: sL2, y: sL2, z: sS2 },
                 { x: sS1, y: sL1, z: sS1 }, { x: sS2, y: sL2, z: sL2 },
@@ -208,62 +207,51 @@
             
             const c = currentCohesion;
             const phiRad = degToRad(currentFrictionAngle);
-            const p_max_visualization = 150; // Controls how far the surface extends
+            const p_max_visualization = 150; 
 
-            const vertices = []; // Array of {x,y,z} objects for Plotly
-            const faces_i = [], faces_j = [], faces_k = []; // For Plotly mesh3d faces
+            const vertices = []; 
+            const faces_i = [], faces_j = [], faces_k = []; 
 
-            if (phiRad > 1e-3) { // Pyramidal surface
+            if (phiRad > 1e-3) { 
                 let p_apex = (c > 1e-3) ? c / Math.tan(phiRad) : 0;
-                if (p_apex < 0) p_apex = 0; // Apex should not be in tension for typical visualization
+                if (p_apex < 0) p_apex = 0; 
                 
-                vertices.push({ x: p_apex, y: p_apex, z: p_apex }); // Apex: vertex 0
+                vertices.push({ x: p_apex, y: p_apex, z: p_apex }); 
                 const apexIndex = 0;
-
-                // Define a hexagonal base far from the apex for visualization
-                // Ensure p_base is significantly larger than p_apex for a good shape
                 let p_base = Math.max(p_apex + 20, p_max_visualization * 0.6); 
-                if (c === 0 && phiRad > 0) p_base = p_max_visualization * 0.6; // Cone from origin
+                if (c === 0 && phiRad > 0) p_base = p_max_visualization * 0.6; 
                 if (p_base <= p_apex && c > 0) p_base = p_apex + Math.max(20, Math.abs(p_apex * 0.5) + 10) ;
                 if (p_base > p_max_visualization) p_base = p_max_visualization;
-
 
                 const baseHexVertices = getHexagonVerticesPlotly(p_base, c, phiRad);
 
                 if (baseHexVertices.length === 6) {
-                    const baseStartIndex = vertices.length; // Current length is 1 (only apex)
-                    baseHexVertices.forEach(v => vertices.push(v)); // Add base vertices (indices 1 to 6)
+                    const baseStartIndex = vertices.length; 
+                    baseHexVertices.forEach(v => vertices.push(v)); 
 
-                    // Create 6 triangular faces for the pyramid sides
                     for (let i = 0; i < 6; i++) {
-                        faces_i.push(apexIndex);                     // Apex
-                        faces_j.push(baseStartIndex + i);           // Current base vertex
-                        faces_k.push(baseStartIndex + (i + 1) % 6); // Next base vertex (loops around)
+                        faces_i.push(apexIndex);                     
+                        faces_j.push(baseStartIndex + i);           
+                        faces_k.push(baseStartIndex + (i + 1) % 6); 
                     }
                 }
-            } else { // Prismatic surface (phi approx 0)
-                const p_low = Math.max(0.1, p_max_visualization * 0.05); // Start slightly away from origin if c > 0
+            } else { 
+                const p_low = Math.max(0.1, p_max_visualization * 0.05); 
                 const p_high = p_max_visualization;
-
                 const hexLowVertices = getHexagonVerticesPlotly(p_low, c, phiRad);
                 const hexHighVertices = getHexagonVerticesPlotly(p_high, c, phiRad);
 
                 if (hexLowVertices.length === 6 && hexHighVertices.length === 6) {
                     const lowStartIndex = vertices.length;
-                    hexLowVertices.forEach(v => vertices.push(v));    // Vertices for low hexagon (e.g., 0-5)
+                    hexLowVertices.forEach(v => vertices.push(v));    
                     const highStartIndex = vertices.length;
-                    hexHighVertices.forEach(v => vertices.push(v)); // Vertices for high hexagon (e.g., 6-11)
-
-                    // Create 6 side faces (each a quad made of two triangles)
+                    hexHighVertices.forEach(v => vertices.push(v)); 
                     for (let i = 0; i < 6; i++) {
                         const currentLowIdx = lowStartIndex + i;
                         const nextLowIdx    = lowStartIndex + (i + 1) % 6;
                         const currentHighIdx= highStartIndex + i;
                         const nextHighIdx   = highStartIndex + (i + 1) % 6;
-
-                        // Triangle 1 of the quad
                         faces_i.push(currentLowIdx); faces_j.push(nextLowIdx); faces_k.push(currentHighIdx);
-                        // Triangle 2 of the quad
                         faces_i.push(nextLowIdx); faces_j.push(nextHighIdx); faces_k.push(currentHighIdx);
                     }
                 }
@@ -274,10 +262,10 @@
                     type: 'mesh3d',
                     x: vertices.map(v => v.x), y: vertices.map(v => v.y), z: vertices.map(v => v.z),
                     i: faces_i, j: faces_j, k: faces_k,
-                    color: '#0033cc', // Darker blue
+                    color: '#0033cc', 
                     opacity: 0.50,
                     flatshading: true,
-                    line: { show: true, color: 'black', width: 2 }, // Add edge lines to mesh3d
+                    line: { show: true, color: 'black', width: 2 }, 
                     lighting: { ambient: 0.7, diffuse: 1.0, specular: 0.2, fresnel: 0.1, roughness: 0.5 },
                     lightposition: {x:1000, y:1000, z:1000}
                 };
@@ -295,11 +283,11 @@
                     paper_bgcolor: 'rgba(255,255,255,1)', 
                     plot_bgcolor: 'rgba(255,255,255,1)',  
                     scene: {
-                        ...sceneLayout, // Preserve camera, aspectmode if already set
+                        ...sceneLayout, 
                         xaxis: { ...sceneLayout.xaxis, title: 'σ₁', showgrid: false, zeroline: true, zerolinewidth: 1, zerolinecolor: '#505050', showticklabels: false, ticks:'', showbackground: false, linecolor: 'black', linewidth: 1},
                         yaxis: { ...sceneLayout.yaxis, title: 'σ₂', showgrid: false, zeroline: true, zerolinewidth: 1, zerolinecolor: '#505050', showticklabels: false, ticks:'', showbackground: false, linecolor: 'black', linewidth: 1},
                         zaxis: { ...sceneLayout.zaxis, title: 'σ₃', showgrid: false, zeroline: true, zerolinewidth: 1, zerolinecolor: '#505050', showticklabels: false, ticks:'', showbackground: false, linecolor: 'black', linewidth: 1},
-                        aspectmode: 'cube', // Re-apply for safety
+                        aspectmode: 'cube', 
                     }
                 };
                 Plotly.react(plot3DDivElement, [trace, hydrostatic_axis], newLayout); 
@@ -314,8 +302,7 @@
             console.log("Updating 2D plots with c:", c, "phiRad:", phiRad);
             const piCanvasEl = document.getElementById('piPlaneChart');
             const meridianCanvasEl = document.getElementById('meridianPlaneChart');
-            // ... (rest of the 2D plot logic, with Chart.js styling changes)
-
+            
             if (typeof Chart === 'undefined') { console.error("Chart.js not loaded."); return; }
 
             // Pi Plane Chart
@@ -329,25 +316,56 @@
                         if (hex3DVertices.length === 6) {
                             hex3DVertices.forEach(v3d => { 
                                 const s1=v3d.x, s2=v3d.y, s3=v3d.z;
-                                const proj_x = (2*s1-s2-s3)/Math.sqrt(6); const proj_y = (s2-s3)/Math.sqrt(2);
+                                // Swapped projection axes for pi-plane
+                                const proj_x = (s2-s3)/Math.sqrt(2); // Old proj_y
+                                const proj_y = (2*s1-s2-s3)/Math.sqrt(6); // Old proj_x
                                 rawPiVertices.push({x: proj_x, y: proj_y});
                             });
                         }
                         const piVertices = rawPiVertices.filter(pt => isFinite(pt.x) && isFinite(pt.y));
+                        
+                        // Calculate extent for axis lines
+                        let max_abs_coord = 60; // Default extent
+                        if (piVertices.length > 0) {
+                            max_abs_coord = piVertices.reduce((max, pt) => Math.max(max, Math.abs(pt.x), Math.abs(pt.y)), 0) * 1.1;
+                            if (max_abs_coord < 20) max_abs_coord = 20; // Minimum extent
+                        }
+
+
+                        const pi_axis_lines_data = [
+                            { // Line for sigma1 direction (approx)
+                                data: [{x: 0, y: max_abs_coord * (2/Math.sqrt(6))}, {x: 0, y: -max_abs_coord * (2/Math.sqrt(6))} ], // Vertical line if proj_y is (2s1-s2-s3)/sqrt(6)
+                                borderColor: '#aaaaaa', borderWidth: 1, borderDash: [2,2], showLine: true, pointRadius: 0, tension: 0
+                            },
+                            { // Line for sigma2 direction (approx)
+                                data: [{x: max_abs_coord / Math.sqrt(2), y: -max_abs_coord / Math.sqrt(6)}, {x: -max_abs_coord / Math.sqrt(2), y: max_abs_coord / Math.sqrt(6)}],
+                                borderColor: '#aaaaaa', borderWidth: 1, borderDash: [2,2], showLine: true, pointRadius: 0, tension: 0
+                            },
+                            { // Line for sigma3 direction (approx)
+                                data: [{x: -max_abs_coord / Math.sqrt(2), y: -max_abs_coord / Math.sqrt(6)}, {x: max_abs_coord / Math.sqrt(2), y: max_abs_coord / Math.sqrt(6)}],
+                                borderColor: '#aaaaaa', borderWidth: 1, borderDash: [2,2], showLine: true, pointRadius: 0, tension: 0
+                            }
+                        ];
+                        
                         if (piPlaneChartInstance) piPlaneChartInstance.destroy();
                         piPlaneChartInstance = new Chart(piCtx, {
                             type: 'scatter', 
-                            data: { datasets: [{ 
-                                data: piVertices.length > 0 ? [...piVertices, piVertices[0]] : [], 
-                                borderColor: 'black', borderWidth: 1.5,
-                                backgroundColor: 'rgba(0,0,0,0)', 
-                                showLine: true, pointRadius: 0, tension: 0 
-                            }] },
+                            data: { 
+                                datasets: [
+                                    { 
+                                        data: piVertices.length > 0 ? [...piVertices, piVertices[0]] : [], 
+                                        borderColor: 'black', borderWidth: 1.5,
+                                        backgroundColor: 'rgba(0,0,0,0)', 
+                                        showLine: true, pointRadius: 0, tension: 0, order: 1 // Ensure hexagon is on top
+                                    },
+                                    ...pi_axis_lines_data // Add axis lines datasets (order 0 by default)
+                                ]
+                            },
                             options: { 
                                 responsive: true, maintainAspectRatio: false, 
                                 scales: { 
-                                    x: { title:{display:false}, grid:{display:false}, ticks:{display:false} }, 
-                                    y: { title:{display:false}, grid:{display:false}, ticks:{display:false}, afterDataLimits:(axis)=>{const maxAbs = Math.max(Math.abs(axis.min || 0), Math.abs(axis.max || 0)); axis.min = -maxAbs; axis.max = maxAbs;}}
+                                    x: { title:{display:false}, grid:{display:false, drawOnChartArea: false}, ticks:{display:false}, border: {display: false} }, 
+                                    y: { title:{display:false}, grid:{display:false, drawOnChartArea: false}, ticks:{display:false}, border: {display: false}, afterDataLimits:(axis)=>{const maxAbs = Math.max(Math.abs(axis.min || 0), Math.abs(axis.max || 0), max_abs_coord); axis.min = -maxAbs; axis.max = maxAbs;}}
                                 }, 
                                 aspectRatio:1, plugins:{legend:{display:false}, title: {display:false}}
                             }
@@ -365,7 +383,7 @@
                         const p_values = []; const q_tc_values = []; const q_te_values = [];
                         let p_start = (phiRad > 1e-3 && c > 1e-3) ? Math.min(100, c/Math.tan(phiRad)) : 0;
                         if (p_start < 0) p_start = 0;
-                        for (let p_iter=p_start; p_iter<=150; p_iter+=1) { // Increased points for smoother line
+                        for (let p_iter=p_start; p_iter<=150; p_iter+=1) { 
                             p_values.push(p_iter);
                             const q_tc = get_q_TC(p_iter, c, phiRad); 
                             const q_te = get_q_TE(p_iter, c, phiRad); 
@@ -374,15 +392,15 @@
                         if (meridianPlaneChartInstance) meridianPlaneChartInstance.destroy();
                         meridianPlaneChartInstance = new Chart(meridianCtx, {
                             type: 'line', 
-                            data: { labels: p_values.map(p => Math.round(p)), datasets: [ 
+                            data: { labels: p_values, datasets: [ // Use p_values for labels for Chart.js to pick ticks
                                 {label:'TC',data:q_tc_values.filter(v=>!isNaN(v)),borderColor:'black',borderWidth:1.5,fill:false, tension:0.1, pointRadius:0}, 
                                 {label:'TE',data:q_te_values.filter(v=>!isNaN(v)),borderColor:'#555555',borderDash:[3,3],borderWidth:1.5,fill:false, tension:0.1, pointRadius:0} 
                             ]},
                             options: { 
                                 responsive: true, maintainAspectRatio: false, 
                                 scales: {
-                                    x:{title:{display:true,text:'p'},grid:{display:false}, ticks:{maxTicksLimit: 6, callback: function(value){return Math.round(value);}}}, 
-                                    y:{title:{display:true,text:'q'},grid:{display:false}, ticks:{maxTicksLimit: 6, callback: function(value){return Math.round(value);}}}
+                                    x:{title:{display:true,text:'p'},grid:{display:false}, ticks:{maxTicksLimit: 7, callback: function(value, index, ticks){ if (index === 0 || index === ticks.length -1 || value % 25 === 0 || value % 50 === 0 ) return Math.round(this.getLabelForValue(value)); return '';}}}, 
+                                    y:{title:{display:true,text:'q'},grid:{display:false}, ticks:{maxTicksLimit: 7, callback: function(value, index, ticks){ if (index === 0 || index === ticks.length -1 || value % 25 === 0 || value % 50 === 0 ) return Math.round(this.getLabelForValue(value)); return '';}}}
                                 }, 
                                 plugins:{legend:{display:true, position: 'top', labels: {boxWidth:10, font: {size: 10}} }, title: {display:false}} 
                             }
@@ -390,7 +408,6 @@
                     }
                 } catch (e) { console.error("Error Meridian Plane:", e); if(meridianContainer) meridianContainer.innerHTML = `<p class='text-red-500'>Error: ${e.message}</p>`;}
             }
-            // Attempt to re-typeset MathJax if it's loaded, specifically targeting the mathEquations div
             if (typeof MathJax !== 'undefined' && MathJax.typesetPromise) {
                 console.log("Attempting MathJax re-typeset after plot updates.");
                 MathJax.typesetPromise([document.getElementById('mathEquations')]).catch(err => console.warn("MathJax re-typesetting failed:", err));
@@ -442,7 +459,7 @@
                         updateMohrCoulombSurface(); 
                     } else {
                         console.warn("Plotly 3D plot initialization failed.");
-                        let c_val = 10, phi_val = 30; // Fallback values
+                        let c_val = 10, phi_val = 30; 
                         if (cohesionSlider) c_val = parseFloat(cohesionSlider.value);
                         if (frictionAngleSlider) phi_val = parseFloat(frictionAngleSlider.value);
                         update2DPlots(c_val, degToRad(phi_val));
@@ -450,13 +467,12 @@
                 } else {
                     console.error("plot3DContainer still has zero dimensions. 3D plot cannot be initialized.");
                     if(plot3DDivElement) plot3DDivElement.innerHTML = "<p class='text-red-500 p-4'>Error: 3D plot container has zero dimensions.</p>";
-                    let c_val = 10, phi_val = 30; // Fallback values
+                    let c_val = 10, phi_val = 30; 
                     if (cohesionSlider) c_val = parseFloat(cohesionSlider.value);
                     if (frictionAngleSlider) phi_val = parseFloat(frictionAngleSlider.value);
                     update2DPlots(c_val, degToRad(phi_val));
                 }
                 
-                // Final MathJax typesetting attempt after everything else
                 if (typeof MathJax !== 'undefined' && MathJax.typesetPromise && MathJax.startup && MathJax.startup.promise) {
                     MathJax.startup.promise.then(() => { 
                         console.log("Final MathJax typesetting call after all initializations.");
@@ -465,7 +481,7 @@
                 } else {
                     console.warn("MathJax not ready for final typeset call or mathEquations div not found.");
                 }
-            }, 300); // Increased delay slightly for all resources to settle
+            }, 300); 
         };
     </script>
 </body>
