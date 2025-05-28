@@ -4,6 +4,8 @@
 
 This web application provides interactive 2D and 3D visualizations of common soil constitutive models used in geotechnical engineering. It is designed to help students, educators, and engineers understand the complex behavior of soils under different stress conditions by visualizing their yield surfaces. This tool serves an educational purpose, aiming to make abstract concepts more tangible.
 
+See the app here: https://yaredwb.github.io/soil-yield-surfaces/
+
 ## Features
 
 *   Interactive 3D visualization of yield surfaces in principal stress space ($\sigma_1, \sigma_2, \sigma_3$).
