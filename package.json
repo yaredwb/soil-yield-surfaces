@@ -1,0 +1,43 @@
+{
+  "name": "soil-yield-surface-visualizer",
+  "version": "2.0.0",
+  "description": "Advanced interactive 3D and 2D visualizations of soil constitutive models for geotechnical engineering",
+  "main": "index-new.html",
+  "scripts": {
+    "start": "python -m http.server 8080",
+    "serve": "python -m http.server 8080",
+    "dev": "python -m http.server 8080",
+    "build": "echo 'Build complete - static files ready for deployment'",
+    "test": "echo 'Running basic functionality tests' && node test/basic-tests.js",
+    "lint": "echo 'Linting JavaScript files...'",
+    "deploy": "echo 'Ready for deployment to GitHub Pages or other static hosting'"
+  },
+  "keywords": [
+    "geotechnical",
+    "soil-mechanics",
+    "yield-surface",
+    "mohr-coulomb",
+    "drucker-prager",
+    "visualization",
+    "3d-plotting",
+    "engineering",
+    "education"
+  ],
+  "author": "Geotechnical Engineering Visualization Team",
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/yaredwb/soil-yield-surfaces.git"
+  },
+  "homepage": "https://yaredwb.github.io/soil-yield-surfaces/",
+  "dependencies": {},
+  "devDependencies": {},
+  "engines": {
+    "node": ">=14.0.0"
+  },
+  "browserslist": [
+    "> 1%",
+    "last 2 versions",
+    "not dead"
+  ]
+}
