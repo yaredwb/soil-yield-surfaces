@@ -1,0 +1,19 @@
+body { font-family: 'Inter', sans-serif; }
+.control-panel-bg { background-color: rgba(243, 244, 246, 0.9); }
+#plot3DContainer {
+    min-height: 450px; 
+    width: 100%;
+    background-color: white; 
+}
+.chart-container { 
+    position: relative; 
+    height:300px; 
+    width:100%; 
+    max-width: 400px;
+    background-color: white; 
+}
+::-webkit-scrollbar { width: 8px; }
+::-webkit-scrollbar-track { background: #f1f1f1; border-radius: 10px; }
+::-webkit-scrollbar-thumb { background: #888; border-radius: 10px; }
+::-webkit-scrollbar-thumb:hover { background: #555; }
+canvas:focus { outline: none; }
